@@ -2,7 +2,7 @@
 
 import unittest
 
-from leaf.rosomak import *
+from sius_client import *
 
 
 class TestRosomakFunctions(unittest.TestCase):
