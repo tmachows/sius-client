@@ -10,8 +10,8 @@ import win32gui
 import win32process
 import wmi
 import win32con
-import tkinter
 import threading
+from tkinter import *
 
 
 server_url = 'http://79.137.72.95:8000'
@@ -30,26 +30,6 @@ current_app = None
 c = wmi.WMI()
 
 logging.basicConfig(format='[sius-client] %(levelname)s: %(message)s', level=logging.DEBUG)
-
-
-def get_token_amp_url_param():
-    return "&station_token={}".format(auth_token)
-
-
-def get_token_query_url_param():
-    return "?station_token={}".format(auth_token)
-
-
-def parse_args():
-    global auth_token
-    global station_id
-    parser = argparse.ArgumentParser()
-    required_args = ["station_id", "auth_token"]
-    for arg in required_args:
-        parser.add_argument(arg)
-    args = parser.parse_args()
-    auth_token = args.auth_token
-    station_id = args.station_id
 
 
 def login():
@@ -179,46 +159,69 @@ def setup_window(root):
     root.wm_title("Apps time tracking")
 
 
-def gui_thread():
+def gui_thread_function():
+    root = Tk()
+    setup_window(root)
+    
+    login_frame = Frame(root)
+    apps_frame = Frame(root)
+
+    login_frame.grid(row=0, column=0, sticky='news')
+    apps_frame.grid(row=0, column=0, sticky='news')
+
+    Label(login_frame, text="Username: ").grid(row=0, column=0, sticky='W')
+    user_input = Entry(login_frame, bd=5)
+    user_input.grid(row=0, column=1, sticky='W')
+    Label(login_frame, text="Password: ").grid(row=1, column=0, sticky='W')
+    pass_input = Entry(login_frame, bd=5, show="*")
+    pass_input.grid(row=1, column=1, sticky='W')
+    Button(login_frame, text='Login', command=lambda:log_in_and_change_frame(user_input, pass_input, apps_frame)).grid(row=2, column=0, sticky='W')
+
+    login_frame.tkraise()
+    root.mainloop()
+
+
+def log_in_and_change_frame(user_input, pass_input, apps_frame):
+    global auth_token
+    global apps
+    global user
+
+    user["username"] = user_input.get()
+    user["password"] = pass_input.get()
+    auth_token = login()
+    apps = get_apps_from_server()
+
+    setup_apps_frame(apps_frame)
+    apps_frame.tkraise()
+
+    monitoring_thread = threading.Thread(target=monitoring_thread_function)
+    monitoring_thread.start()
+
+
+def setup_apps_frame(apps_frame):
     global apps
     global current_app
 
-    top = tkinter.Tk()
-    setup_window(top)
     r = 0
 
-    apps_header = tkinter.Label(top, text="Choose apps to be tracked:").grid(row=r, column=0)
+    apps_header = Label(apps_frame, text="Apps to be tracked:").grid(row=r, column=0)
     r = r + 1
 
     for app in apps:
-        apps[app] = tkinter.BooleanVar()
-        l = tkinter.Checkbutton(top, text=app, variable=apps[app]).grid(row=r, column=0, sticky='W')
+        apps[app] = BooleanVar()
+        l = Checkbutton(apps_frame, text=app, variable=apps[app]).grid(row=r, column=0, sticky='W')
         r = r + 1
 
-    current_app_label = tkinter.Label(top, text="Currently running app:").grid(row=r, column=0)
+    current_app_label = Label(apps_frame, text="Currently running app:").grid(row=r, column=0)
     r = r + 1
 
-    current_app = tkinter.StringVar()
-    current_app_label = tkinter.Label(top, textvariable=current_app).grid(row=r, column=0)
-
-    top.mainloop()
+    current_app = StringVar()
+    current_app_label = Label(apps_frame, textvariable=current_app).grid(row=r, column=0)
 
 
-if __name__ == "__main__":
-
-    # parse_args()
-
-    logging.info("Starting apps time monitoring...")
-    
-    auth_token = login()
-
-    apps = get_apps_from_server()
-
-    logging.info("Auth token: " + str(auth_token))
-    logging.info("Apps: " + str(apps))
-
-    _gui_thread = threading.Thread(target=gui_thread)
-    _gui_thread.start()
+def monitoring_thread_function():
+    global active_app
+    global active_app_text
 
     while True:  
         date = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -227,14 +230,14 @@ if __name__ == "__main__":
         active_app_text = win32gui.GetWindowText(active_app)
         enum_handler(active_app, None)
 
-        # win32gui.EnumWindows(enum_handler, None)
-       
-
-        #try:
-         #   r = requests.post(dyn_url, json=dynamic_data)
-          #  check_status(r)
-        #except requests.exceptions.ConnectionError as e:
-         #   logging.warning(e)
-          #  pass
-
         time.sleep(1)
+
+
+if __name__ == "__main__":
+
+    logging.info("Starting apps time monitoring...")
+
+    gui_thread = threading.Thread(target=gui_thread_function)
+    gui_thread.start()
+
+    
