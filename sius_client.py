@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import argparse
 import time
 import datetime
 import requests
@@ -14,7 +13,7 @@ import threading
 from tkinter import *
 
 
-server_url = 'http://79.137.72.95:8000'
+server_url = 'http://vps362165.ovh.net:8000'
 
 user = {
     "username": "admin",
@@ -22,10 +21,9 @@ user = {
 }
 auth_token = None
 
-apps = {"Firefox": False, 
-        "Microsoft Visual Studio 2015": False,
-        "Python": False}
+apps = {}
 current_app = None
+is_event_active = False
 
 c = wmi.WMI()
 
@@ -104,25 +102,28 @@ def enum_handler(hwnd, lParam):
             try:
                 hndl = win32api.OpenProcess(win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, 0, pid)
                 newExe = win32process.GetModuleFileNameEx(hndl, 0)
-                current_app = get_file_description(newExe)
-                handle_current_app(current_app)
+                file_description = get_file_description(newExe)
+                handle_current_app(file_description)
             except Exception as e:
                 print(e)
 
 
 def handle_current_app(app):
     global current_app
-    logging.debug("handle current app global: " + current_app.get())
-    logging.debug("handle current app param: " + app)
-    if app != current_app.get():
-        if current_app.get() != "":
+    global is_event_active
+    if app != current_app.get() and app in apps and apps[app].get() is True:
+        if is_event_active:
             send_finished_event(current_app.get())
-        current_app.set(app)
         send_started_event(app)
-
+        is_event_active = True
+    if (app in apps and apps[app].get()) is False:
+        if is_event_active and app != current_app.get():
+            send_finished_event(current_app.get())
+        is_event_active = False
+    current_app.set(app)
 
 def send_started_event(app):
-    event_started_url = server_url + "/user/app/" + app + "/" # + "?format=json"
+    event_started_url = server_url + "/user/" + user["username"] + "/" + app + "/" # + "?format=json"
     current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     try:
         response = requests.post(event_started_url, json={"start_time": current_time}, 
@@ -134,7 +135,7 @@ def send_started_event(app):
 
 
 def send_finished_event(app):
-    event_finished_url = server_url + "/user/app/" + app + "/session/" # + "?format=json"
+    event_finished_url = server_url + "/user/" + user["username"] + "/" + app + "/session/" # + "?format=json"
     current_time = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     try:
         response = requests.delete(event_finished_url, json={"end_time": current_time}, 
@@ -183,22 +184,21 @@ def gui_thread_function():
 
 def log_in_and_change_frame(user_input, pass_input, apps_frame):
     global auth_token
-    global apps
     global user
 
     user["username"] = user_input.get()
     user["password"] = pass_input.get()
     auth_token = login()
-    apps = get_apps_from_server()
+    predefined_apps = get_apps_from_server()
 
-    setup_apps_frame(apps_frame)
+    setup_apps_frame(apps_frame, predefined_apps)
     apps_frame.tkraise()
 
     monitoring_thread = threading.Thread(target=monitoring_thread_function)
     monitoring_thread.start()
 
 
-def setup_apps_frame(apps_frame):
+def setup_apps_frame(apps_frame, predefined_apps):
     global apps
     global current_app
 
@@ -207,7 +207,8 @@ def setup_apps_frame(apps_frame):
     apps_header = Label(apps_frame, text="Apps to be tracked:").grid(row=r, column=0)
     r = r + 1
 
-    for app in apps:
+    for app in predefined_apps:
+        app = app['app']
         apps[app] = BooleanVar()
         l = Checkbutton(apps_frame, text=app, variable=apps[app]).grid(row=r, column=0, sticky='W')
         r = r + 1
